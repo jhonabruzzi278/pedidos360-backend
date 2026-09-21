@@ -13,7 +13,8 @@ data "aws_ami" "al2023" {
   }
 }
 
-# Una sola instancia con los tres modulos (bff, orders-service, audit-service), un servicio systemd cada uno.
+# Una sola instancia con los tres modulos (bff, orders-service, audit-service), un servicio systemd cada
+# uno, y nginx sirviendo el frontend.
 resource "aws_instance" "backend" {
   ami                         = data.aws_ami.al2023.id
   instance_type               = var.instance_type
@@ -24,14 +25,14 @@ resource "aws_instance" "backend" {
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
     region           = var.aws_region
-    artifacts_bucket = aws_s3_bucket.artifacts.bucket
-    frontend_origin  = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+    artifacts_bucket = local.artifacts_bucket
+    frontend_origin  = aws_apigatewayv2_api.web.api_endpoint
     jwt_issuer       = local.jwt_issuer_effective
     jwt_audience     = local.jwt_audience_effective
     jwt_configured   = local.jwt_configured
   })
   # La configuracion vive en user_data: cambiarla (p. ej. al crear el tenant) recrea la instancia.
-  # La IP elastica se reasocia sola y los JAR se vuelven a bajar de S3 al arrancar.
+  # La IP elastica se reasocia sola y los JAR y el sitio se vuelven a bajar de S3 al arrancar.
   user_data_replace_on_change = true
 
   metadata_options {

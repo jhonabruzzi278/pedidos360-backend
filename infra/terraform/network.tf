@@ -51,7 +51,7 @@ resource "aws_route_table_association" "public" {
 # no se puede acotar a un origen. El BFF valida igualmente firma, vigencia, issuer y audience del JWT.
 resource "aws_security_group" "backend" {
   name        = "${local.name}-sg-backend"
-  description = "BFF Pedidos360: solo el puerto del BFF. Sin SSH (acceso por SSM)."
+  description = "Pedidos360: BFF (8080) y nginx (80). Sin SSH (acceso por SSM)."
   vpc_id      = aws_vpc.main.id
 
   tags = { Name = "${local.name}-sg-backend" }
@@ -63,6 +63,16 @@ resource "aws_vpc_security_group_ingress_rule" "bff" {
   ip_protocol       = "tcp"
   from_port         = local.bff_port
   to_port           = local.bff_port
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+# El segundo API Gateway (jdv-web) entrega el frontend desde nginx; tambien sale desde IPs no fijas.
+resource "aws_vpc_security_group_ingress_rule" "web" {
+  security_group_id = aws_security_group.backend.id
+  description       = "nginx (frontend) desde API Gateway"
+  ip_protocol       = "tcp"
+  from_port         = local.web_port
+  to_port           = local.web_port
   cidr_ipv4         = "0.0.0.0/0"
 }
 

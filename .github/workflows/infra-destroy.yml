@@ -79,23 +79,20 @@ jobs:
             -backend-config="encrypt=true" \
             -backend-config="use_lockfile=true"
 
-      # CloudFront debe deshabilitarse y propagarse antes de borrarse: puede tardar varios minutos.
       - name: Terraform destroy
         run: terraform destroy -auto-approve -parallelism=20
+
+      # Este bucket no es un recurso de Terraform (lo crea bootstrap-state.sh): se borra aparte.
+      - name: Borrar bucket de artefactos
+        working-directory: .
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          bash infra/scripts/delete-bucket.sh "jdv-artifacts-$ACCOUNT_ID"
 
       - name: Borrar bucket del estado
         if: ${{ inputs.delete_state_bucket }}
         working-directory: .
-        run: |
-          B="$STATE_BUCKET"
-          # El bucket tiene versionado: hay que borrar versiones y marcadores antes de eliminarlo.
-          OBJECTS="$(aws s3api list-object-versions --bucket "$B" --output json \
-            | jq -c '[(.Versions // [])[], (.DeleteMarkers // [])[]] | map({Key, VersionId})')"
-          if [ "$OBJECTS" != "[]" ]; then
-            aws s3api delete-objects --bucket "$B" --delete "{\"Objects\": $OBJECTS, \"Quiet\": true}" >/dev/null
-          fi
-          aws s3api delete-bucket --bucket "$B"
-          echo "Bucket $B eliminado"
+        run: bash infra/scripts/delete-bucket.sh "$STATE_BUCKET"
 
       - name: Resumen
         if: always()

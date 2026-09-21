@@ -32,7 +32,7 @@ resource "aws_apigatewayv2_api" "main" {
 
   # Origenes explicitos, solo los metodos y encabezados necesarios, sin comodines.
   cors_configuration {
-    allow_origins = concat(["https://${aws_cloudfront_distribution.frontend.domain_name}"], var.extra_cors_origins)
+    allow_origins = concat([aws_apigatewayv2_api.web.api_endpoint], var.extra_cors_origins)
     allow_methods = ["GET", "POST", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600

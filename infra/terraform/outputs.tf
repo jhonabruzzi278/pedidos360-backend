@@ -1,28 +1,21 @@
 output "api_endpoint" {
-  description = "URL base del API Gateway: es el apiBaseUrl del frontend."
+  description = "URL base del API Gateway jdv-api: es el apiBaseUrl del frontend."
   value       = aws_apigatewayv2_api.main.api_endpoint
 }
 
 output "frontend_url" {
-  description = "URL HTTPS del frontend (CloudFront)."
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  description = "URL HTTPS del frontend (API Gateway jdv-web -> nginx en la EC2)."
+  value       = aws_apigatewayv2_api.web.api_endpoint
 }
 
 output "entra_redirect_uri" {
-  description = "Registrar como URI de redireccion (plataforma SPA) en la aplicacion de Entra ID. Cambia si se recrea CloudFront."
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
-}
-
-output "cloudfront_distribution_id" {
-  value = aws_cloudfront_distribution.frontend.id
-}
-
-output "frontend_bucket" {
-  value = aws_s3_bucket.frontend.bucket
+  description = "Registrar como URI de redireccion (plataforma SPA) en la aplicacion de Entra ID. Cambia si se recrea jdv-web."
+  value       = aws_apigatewayv2_api.web.api_endpoint
 }
 
 output "artifacts_bucket" {
-  value = aws_s3_bucket.artifacts.bucket
+  description = "Bucket con los JAR y el sitio del frontend (lo crea bootstrap-state.sh)."
+  value       = local.artifacts_bucket
 }
 
 output "backend_instance_id" {

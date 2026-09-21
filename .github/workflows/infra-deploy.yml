@@ -1,6 +1,6 @@
 name: infra-deploy
 
-# Crea o actualiza toda la infraestructura (VPC, EC2, API Gateway, S3, CloudFront) con Terraform.
+# Crea o actualiza toda la infraestructura (VPC, EC2 con nginx, dos API Gateway) con Terraform.
 # El estado queda en S3 (jdv-tfstate-<cuenta>). Solo manual: las credenciales del Learner Lab caducan.
 on:
   workflow_dispatch:

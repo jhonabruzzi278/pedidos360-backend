@@ -4,7 +4,7 @@
 set -euxo pipefail
 exec > >(tee /var/log/pedidos360-user-data.log) 2>&1
 
-dnf install -y java-17-amazon-corretto-headless
+dnf install -y java-17-amazon-corretto-headless nginx
 
 id pedidos360 >/dev/null 2>&1 || useradd --system --home-dir /opt/pedidos360 --shell /sbin/nologin pedidos360
 install -d -o pedidos360 -g pedidos360 /opt/pedidos360
@@ -106,4 +106,96 @@ echo "Despliegue $RELEASE completado"
 DEPLOY
 chmod 750 /opt/pedidos360/deploy.sh
 
-/opt/pedidos360/deploy.sh latest || echo "Despliegue inicial omitido; ejecute el workflow backend-deploy"
+# --- Frontend: nginx sirve el sitio Angular; lo publica el workflow frontend (via SSM) ---
+install -d -o nginx -g nginx /var/www/pedidos360
+
+cat > /etc/nginx/security-headers.conf <<'NGINX'
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+NGINX
+
+cat > /etc/nginx/nginx.conf <<'NGINX'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /run/nginx.pid;
+
+events { worker_connections 512; }
+
+http {
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  server_tokens off;
+  sendfile on;
+  gzip on;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+  access_log /var/log/nginx/access.log;
+
+  server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/pedidos360;
+    index index.html;
+
+    # index.html se revalida siempre; los archivos con hash en el nombre se cachean un ano.
+    location = /index.html {
+      include /etc/nginx/security-headers.conf;
+      add_header Cache-Control "no-cache" always;
+    }
+    location ~* \.(?:js|css|woff2?|svg|png|jpe?g|ico)$ {
+      include /etc/nginx/security-headers.conf;
+      add_header Cache-Control "public, max-age=31536000, immutable" always;
+      try_files $uri =404;
+    }
+    # SPA: cualquier ruta de Angular devuelve index.html.
+    location / {
+      include /etc/nginx/security-headers.conf;
+      add_header Cache-Control "no-cache" always;
+      try_files $uri $uri/ /index.html;
+    }
+  }
+}
+NGINX
+
+nginx -t
+systemctl enable --now nginx
+
+cat > /opt/pedidos360/deploy-frontend.sh <<'DEPLOYWEB'
+#!/bin/bash
+# Uso: deploy-frontend.sh [release]   (por defecto "latest"). Publica en nginx el sitio Angular guardado en S3.
+set -euo pipefail
+BUCKET="${artifacts_bucket}"
+REGION="${region}"
+RELEASE="$${1:-latest}"
+SRC="s3://$BUCKET/frontend/$RELEASE/site.tar.gz"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+if ! aws s3 ls "$SRC" --region "$REGION" >/dev/null 2>&1; then
+  echo "Sin sitio en $SRC: nada que desplegar"
+  exit 0
+fi
+
+aws s3 cp "$SRC" "$WORK/site.tar.gz" --region "$REGION" --only-show-errors
+mkdir "$WORK/site"
+tar -xzf "$WORK/site.tar.gz" -C "$WORK/site"
+if [ ! -f "$WORK/site/index.html" ]; then
+  echo "El paquete no contiene index.html" >&2
+  exit 1
+fi
+
+chown -R nginx:nginx "$WORK/site"
+chmod 755 "$WORK/site"
+rm -rf /var/www/pedidos360.old
+if [ -d /var/www/pedidos360 ]; then mv /var/www/pedidos360 /var/www/pedidos360.old; fi
+mv "$WORK/site" /var/www/pedidos360
+rm -rf /var/www/pedidos360.old
+
+curl -fsS -o /dev/null http://127.0.0.1/
+echo "Frontend $RELEASE publicado"
+DEPLOYWEB
+chmod 750 /opt/pedidos360/deploy-frontend.sh
+
+/opt/pedidos360/deploy.sh latest || echo "Despliegue inicial omitido; ejecute el workflow backend"
+/opt/pedidos360/deploy-frontend.sh latest || echo "Despliegue inicial del frontend omitido; ejecute el workflow frontend"
