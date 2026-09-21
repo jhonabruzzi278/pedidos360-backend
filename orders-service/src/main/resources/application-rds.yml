@@ -1,0 +1,12 @@
+# Perfil de la nube: Amazon RDS PostgreSQL. Se activa con SPRING_PROFILES_ACTIVE=rds.
+# Sin valores por defecto a proposito: si falta alguna variable el servicio no arranca en vez de caer en H2
+# y perder los datos en silencio. En la EC2 las escribe user_data/deploy.sh (la contrasena sale de SSM).
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      # update crea las tablas la primera vez y conserva los datos en los reinicios (create-drop los borraria).
+      ddl-auto: update
