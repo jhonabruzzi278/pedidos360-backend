@@ -1,0 +1,19 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: bff
+services:
+  orders-url: ${ORDERS_SERVICE_URL:http://localhost:8081}
+  audit-url: ${AUDIT_SERVICE_URL:http://localhost:8082}
+app:
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:4200}
+# Sin perfil explicito el BFF valida contra el emisor real (Entra ID). Ambos valores son
+# obligatorios y sin valor por defecto: si faltan, la aplicacion no arranca.
+# Para desarrollo local activar el perfil "local" (ver application-local.yml).
+security:
+  jwt:
+    issuer: ${JWT_ISSUER}
+    audience: ${JWT_AUDIENCE}
+management.endpoints.web.exposure.include: health,info

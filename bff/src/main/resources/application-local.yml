@@ -1,0 +1,11 @@
+# SOLO desarrollo local: emite y valida tokens HMAC propios, sin Entra ID.
+# Se activa unicamente con SPRING_PROFILES_ACTIVE=local. NUNCA en nube.
+server:
+  # Aunque el perfil se active por error en un servidor, el BFF no queda accesible desde la red.
+  address: 127.0.0.1
+security:
+  jwt:
+    issuer: ${JWT_ISSUER:pedidos360-local}
+    audience: ${JWT_AUDIENCE:api://pedidos360-local}
+    # Sin JWT_LOCAL_SECRET (minimo 32 bytes) se genera una clave aleatoria en cada arranque: los tokens
+    # emitidos por /dev/token dejan de valer al reiniciar el BFF. No hay ningun secreto en el repositorio.

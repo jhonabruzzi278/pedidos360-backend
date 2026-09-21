@@ -1,0 +1,39 @@
+# Maven / Java: compilacion
+target/
+.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.properties
+hs_err_pid*
+
+# Ejecucion local (pids y logs de scripts/start-local.ps1)
+.runtime/
+*.log
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.springBeans
+.sts4-cache/
+nbproject/
+
+# Secretos y certificados: nunca al repositorio
+.env
+*.pem
+*.pfx
+*.p12
+*.jks
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Documentos de guia (rubricas, notas de alcance): no se suben al repositorio
+*.pdf
+docs/

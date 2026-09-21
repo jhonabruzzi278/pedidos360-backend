@@ -1,0 +1,6 @@
+# Los scripts de shell deben conservar LF: con CRLF fallan en Linux (por ejemplo en EC2).
+* text=auto
+mvnw text eol=lf
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
