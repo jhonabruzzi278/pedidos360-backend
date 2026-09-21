@@ -91,13 +91,13 @@ Las variables de entorno estan documentadas en `.env.example`. `FRONTEND_ORIGIN`
 
 ## Base de datos
 
-Local: H2 en memoria (modo Oracle) con datos de ejemplo. El esquema Oracle de referencia esta en `database/Script.corrected.sql`: es el script original con una unica correccion, un trigger para `OT_ITEM.ITEM_ID` (`SEQ_OT_ITEM` se creaba pero nunca se usaba, y el primer `INSERT` fallaba con `ORA-01400`). El script crea un usuario con una clave de ejemplo (`ChangeMe_2025!`) que debe cambiarse antes de ejecutarlo en un entorno real.
+Local y hoy tambien en la nube: H2 en memoria (modo Oracle). Arranca con datos de ejemplo de un taller mecanico (seis ordenes con sus repuestos y mano de obra, y el historial de auditoria correspondiente), que se recargan en cada reinicio porque la base es volatil. Las ordenes nuevas se crean desde el formulario del frontend. El esquema Oracle de referencia esta en `database/Script.corrected.sql`: es el script original con una unica correccion, un trigger para `OT_ITEM.ITEM_ID` (`SEQ_OT_ITEM` se creaba pero nunca se usaba, y el primer `INSERT` fallaba con `ORA-01400`). El script crea un usuario con una clave de ejemplo (`ChangeMe_2025!`) que debe cambiarse antes de ejecutarlo en un entorno real.
 
 Pendiente: perfil de conexion a la base de datos cloud (driver, URL y credenciales por variables de entorno) y `ddl-auto` acorde al esquema real.
 
 ## Alcance y pendientes
 
-Implementado y verificado localmente: microservicios, BFF con validacion de JWT, autorizacion por rol y scope, CORS, y 96 pruebas automatizadas (incluidas pruebas sobre servidor real y una verificacion RS256 contra un IdP falso local). Pendiente, por requerir cuentas de nube: tenant y aplicacion en Entra ID, flujo de registro, API Gateway, despliegue en EC2 y base de datos cloud.
+Implementado: microservicios, BFF con validacion de JWT, autorizacion por rol y scope, CORS, y 106 pruebas automatizadas (incluidas pruebas sobre servidor real y una verificacion RS256 contra un IdP falso local). Desplegado en la nube: tenant y aplicaciones en Entra ID, API Gateway con JWT authorizer y EC2 (ver la seccion siguiente). Pendiente: base de datos cloud (hoy H2 en memoria), el flujo de registro de usuarios desde el frontend (guia en [`infra/ENTRA.md`](infra/ENTRA.md), seccion 4) y que las ordenes nuevas generen su evento de auditoria (hoy el servicio de auditoria solo expone el historial de ejemplo).
 
 ## Infraestructura cloud
 
