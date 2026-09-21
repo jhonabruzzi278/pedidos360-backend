@@ -30,6 +30,13 @@ resource "aws_instance" "backend" {
     jwt_issuer       = local.jwt_issuer_effective
     jwt_audience     = local.jwt_audience_effective
     jwt_configured   = local.jwt_configured
+
+    # Base de datos: la instancia se crea despues de RDS. La contrasena no viaja aqui: deploy.sh la lee de SSM.
+    db_host               = aws_db_instance.main.address
+    db_port               = local.db_port
+    db_name               = var.db_name
+    db_username           = var.db_username
+    db_password_parameter = aws_ssm_parameter.db_password.name
   })
   # La configuracion vive en user_data: cambiarla (p. ej. al crear el tenant) recrea la instancia.
   # La IP elastica se reasocia sola y los JAR y el sitio se vuelven a bajar de S3 al arrancar.

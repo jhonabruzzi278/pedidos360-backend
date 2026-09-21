@@ -30,3 +30,18 @@ output "jwt_configured" {
   description = "false: se usan marcadores de issuer/audience; el BFF no arranca hasta definir JWT_ISSUER y JWT_AUDIENCE."
   value       = local.jwt_configured
 }
+
+output "db_endpoint" {
+  description = "Endpoint de RDS PostgreSQL (solo alcanzable desde el backend, dentro de la VPC)."
+  value       = "${aws_db_instance.main.address}:${aws_db_instance.main.port}"
+}
+
+output "db_name" {
+  description = "Nombre de la base de datos."
+  value       = aws_db_instance.main.db_name
+}
+
+output "db_password_parameter" {
+  description = "Nombre del parametro SSM (SecureString) con la contrasena de la base. Solo el nombre, nunca el valor."
+  value       = aws_ssm_parameter.db_password.name
+}

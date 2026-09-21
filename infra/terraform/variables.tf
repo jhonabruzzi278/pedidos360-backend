@@ -56,3 +56,33 @@ variable "enable_api_access_logs" {
   type        = bool
   default     = true
 }
+
+variable "db_engine_version" {
+  description = "Version mayor de PostgreSQL en RDS. AWS elige la menor y el ciclo de vida ignora sus actualizaciones automaticas."
+  type        = string
+  default     = "16"
+}
+
+variable "db_instance_class" {
+  description = "Clase de la instancia RDS. db.t3.micro basta para el laboratorio (dos servicios, pocos datos)."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "Almacenamiento de la base de datos en GB (minimo de RDS para gp2)."
+  type        = number
+  default     = 20
+}
+
+variable "db_name" {
+  description = "Nombre de la base de datos. Contiene las tablas de orders-service (OT, OT_ITEM) y audit-service (OT_EVENT)."
+  type        = string
+  default     = "pedidos360"
+}
+
+variable "db_username" {
+  description = "Usuario de la base de datos. La contrasena se genera y queda en SSM Parameter Store."
+  type        = string
+  default     = "pedidos360"
+}

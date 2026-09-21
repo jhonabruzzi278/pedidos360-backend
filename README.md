@@ -13,10 +13,10 @@ BFF :8080  -- valida firma, vigencia, issuer y audience; autoriza por scope y ro
    v                    v
 orders-service :8081   audit-service :8082
    v                    v
-H2 en memoria          H2 en memoria
+H2 en memoria          H2 en memoria      (local; en la nube, perfil `rds`: Amazon RDS PostgreSQL)
 ```
 
-En la nube el BFF queda detras de AWS API Gateway, que tambien valida el JWT. Esta base local no crea ni conecta recursos AWS/Azure.
+En la nube el BFF queda detras de AWS API Gateway, que tambien valida el JWT, y los dos microservicios usan Amazon RDS PostgreSQL (ver "Base de datos"). El perfil por defecto no crea ni conecta recursos AWS/Azure.
 
 | Modulo | Puerto | Responsabilidad |
 |---|---|---|
@@ -91,13 +91,22 @@ Las variables de entorno estan documentadas en `.env.example`. `FRONTEND_ORIGIN`
 
 ## Base de datos
 
-Local y hoy tambien en la nube: H2 en memoria (modo Oracle). Arranca con datos de ejemplo de un taller mecanico (seis ordenes con sus repuestos y mano de obra, y el historial de auditoria correspondiente), que se recargan en cada reinicio porque la base es volatil. Las ordenes nuevas se crean desde el formulario del frontend. El esquema Oracle de referencia esta en `database/Script.corrected.sql`: es el script original con una unica correccion, un trigger para `OT_ITEM.ITEM_ID` (`SEQ_OT_ITEM` se creaba pero nunca se usaba, y el primer `INSERT` fallaba con `ORA-01400`). El script crea un usuario con una clave de ejemplo (`ChangeMe_2025!`) que debe cambiarse antes de ejecutarlo en un entorno real.
+Dos perfiles, con las mismas entidades y repositorios JPA:
 
-Pendiente: perfil de conexion a la base de datos cloud (driver, URL y credenciales por variables de entorno) y `ddl-auto` acorde al esquema real.
+| Perfil | Base de datos | Cuando |
+|---|---|---|
+| por defecto | H2 en memoria (modo Oracle), `ddl-auto: create-drop` | desarrollo local y pruebas; los datos se pierden al reiniciar |
+| `rds` | **Amazon RDS PostgreSQL 16**, `ddl-auto: update` | la nube (EC2); `SPRING_PROFILES_ACTIVE=rds` |
+
+Con el perfil `rds` cada servicio lee la conexion de `DB_URL`, `DB_USERNAME` y `DB_PASSWORD` (`application-rds.yml`), **sin valores por defecto**: si falta alguna, el servicio no arranca en lugar de caer en H2 y perder los datos en silencio. En la EC2 las escribe `user_data`/`deploy.sh` y la contrasena sale de SSM Parameter Store; no hay ninguna credencial en el repositorio. Detalle de la red, el secreto y las concesiones del laboratorio en [`infra/README.md`](infra/README.md#base-de-datos-rds-postgresql).
+
+Ambos servicios arrancan con datos de ejemplo de un taller mecanico (seis ordenes con sus repuestos y mano de obra, y el historial de auditoria correspondiente) **solo si la tabla esta vacia**: en H2 se recargan en cada reinicio; en RDS se cargan una vez y las ordenes creadas desde el frontend se conservan. Las pruebas `WorkOrderPostgresTest` y `AuditEventPostgresTest` arrancan cada servicio con el perfil `rds` contra un PostgreSQL 16 real en Docker (Testcontainers) y se omiten si no hay Docker.
+
+El esquema Oracle de referencia esta en `database/Script.corrected.sql`: es el script original con una unica correccion, un trigger para `OT_ITEM.ITEM_ID` (`SEQ_OT_ITEM` se creaba pero nunca se usaba, y el primer `INSERT` fallaba con `ORA-01400`). El script crea un usuario con una clave de ejemplo (`ChangeMe_2025!`) que debe cambiarse antes de ejecutarlo en un entorno real. La nube usa PostgreSQL porque las entidades no dependen de Oracle y RDS PostgreSQL es mas ligero para el laboratorio; el script no se ejecuta en ningun entorno.
 
 ## Alcance y pendientes
 
-Implementado: microservicios, BFF con validacion de JWT, autorizacion por rol y scope, CORS, y 106 pruebas automatizadas (incluidas pruebas sobre servidor real y una verificacion RS256 contra un IdP falso local). Desplegado en la nube: tenant y aplicaciones en Entra ID, API Gateway con JWT authorizer y EC2 (ver la seccion siguiente). Pendiente: base de datos cloud (hoy H2 en memoria), el flujo de registro de usuarios desde el frontend (guia en [`infra/ENTRA.md`](infra/ENTRA.md), seccion 4) y que las ordenes nuevas generen su evento de auditoria (hoy el servicio de auditoria solo expone el historial de ejemplo).
+Implementado: microservicios, BFF con validacion de JWT, autorizacion por rol y scope, CORS, y 114 pruebas automatizadas (incluidas pruebas sobre servidor real y una verificacion RS256 contra un IdP falso local). Desplegado en la nube: tenant y aplicaciones en Entra ID, API Gateway con JWT authorizer y EC2 (ver la seccion siguiente). Pendiente: el flujo de registro de usuarios desde el frontend (guia en [`infra/ENTRA.md`](infra/ENTRA.md), seccion 4) y que las ordenes nuevas generen su evento de auditoria (hoy el servicio de auditoria solo expone el historial de ejemplo).
 
 ## Infraestructura cloud
 

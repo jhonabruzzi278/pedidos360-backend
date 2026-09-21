@@ -6,6 +6,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    # Contrasena de la base de datos: se genera en cada entorno y no vive en el repositorio.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # Configuracion parcial: bucket, key y region los inyecta el workflow con -backend-config
