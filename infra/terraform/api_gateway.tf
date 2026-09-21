@@ -1,8 +1,9 @@
 locals {
-  # Contrato del BFF (ver README del backend). El scope se exige ya en el gateway; el rol `admin`
-  # del POST lo verifica el BFF (un JWT authorizer de HTTP API no evalua el claim `roles`).
-  # Todas las rutas entran por el BFF, que reenvia al microservicio dueno de cada recurso: los
-  # microservicios no autentican y por eso no se exponen (escuchan solo en 127.0.0.1).
+  # Contrato del BFF (ver README del backend). El scope se exige ya en el gateway; el rol `admin` y el
+  # acceso aprobado los verifica el BFF (un JWT authorizer de HTTP API no evalua el claim `roles` ni
+  # conoce los datos del usuario). Todas las rutas entran por el BFF, que reenvia al microservicio
+  # dueno de cada recurso: los microservicios no autentican y por eso no se exponen (escuchan solo
+  # en 127.0.0.1). Sin parametros de ruta: la decision de una solicitud viaja en el cuerpo.
   api_routes = {
     "GET /api/work-orders" = {
       method      = "GET"
@@ -14,13 +15,37 @@ locals {
       method      = "POST"
       path        = "/api/work-orders"
       scopes      = ["orders.write"]
-      description = "BFF (rol admin) -> orders-service POST /internal/work-orders"
+      description = "BFF (admin o acceso aprobado) -> orders-service POST /internal/work-orders"
     }
     "GET /api/events" = {
       method      = "GET"
       path        = "/api/events"
       scopes      = ["events.read"]
       description = "BFF -> audit-service GET /internal/events"
+    }
+    "GET /api/access-requests/me" = {
+      method      = "GET"
+      path        = "/api/access-requests/me"
+      scopes      = ["orders.read"]
+      description = "BFF (identidad del token) -> orders-service GET /internal/access-requests/me"
+    }
+    "POST /api/access-requests" = {
+      method      = "POST"
+      path        = "/api/access-requests"
+      scopes      = ["orders.write"]
+      description = "BFF (identidad del token) -> orders-service POST /internal/access-requests"
+    }
+    "GET /api/access-requests" = {
+      method      = "GET"
+      path        = "/api/access-requests"
+      scopes      = ["orders.read"]
+      description = "BFF (rol admin) -> orders-service GET /internal/access-requests"
+    }
+    "POST /api/access-requests/decision" = {
+      method      = "POST"
+      path        = "/api/access-requests/decision"
+      scopes      = ["orders.write"]
+      description = "BFF (rol admin) -> orders-service POST /internal/access-requests/decision"
     }
   }
 }

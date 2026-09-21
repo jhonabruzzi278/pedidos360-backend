@@ -45,7 +45,15 @@ class SecurityConfiguration {
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/work-orders").hasAuthority(SCOPE_ORDERS_READ)
             .requestMatchers(HttpMethod.GET, "/api/events").hasAuthority(SCOPE_EVENTS_READ)
-            .requestMatchers(HttpMethod.POST, "/api/work-orders")
+            // Generar una cotizacion: la cadena exige el scope; ser admin o tener el acceso aprobado por un
+            // admin lo verifica GatewayController (depende de datos, no solo del token).
+            .requestMatchers(HttpMethod.POST, "/api/work-orders").hasAuthority(SCOPE_ORDERS_WRITE)
+            // Solicitudes de acceso: cada usuario consulta y pide la suya; listar y decidir es solo del admin.
+            .requestMatchers(HttpMethod.GET, "/api/access-requests/me").hasAuthority(SCOPE_ORDERS_READ)
+            .requestMatchers(HttpMethod.POST, "/api/access-requests").hasAuthority(SCOPE_ORDERS_WRITE)
+            .requestMatchers(HttpMethod.GET, "/api/access-requests")
+                .hasAllAuthorities("ROLE_" + ADMIN_ROLE, SCOPE_ORDERS_READ)
+            .requestMatchers(HttpMethod.POST, "/api/access-requests/decision")
                 .hasAllAuthorities("ROLE_" + ADMIN_ROLE, SCOPE_ORDERS_WRITE)
             .anyRequest().denyAll())
         .oauth2ResourceServer(oauth -> oauth

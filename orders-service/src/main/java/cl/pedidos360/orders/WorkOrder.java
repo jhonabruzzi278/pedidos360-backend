@@ -36,6 +36,9 @@ public class WorkOrder implements Persistable<String> {
   private long total;
   @Column(name = "CREATED_AT", nullable = false)
   private Instant createdAt;
+  /** Quien emitio la cotizacion (nombre que el BFF toma del token). Nulo en las anteriores a este campo. */
+  @Column(name = "CREATED_BY", length = 100)
+  private String createdBy;
   @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
   private List<WorkOrderItem> items = new ArrayList<>();
   @Transient
@@ -56,6 +59,10 @@ public class WorkOrder implements Persistable<String> {
     items.add(new WorkOrderItem(this, concept, quantity, unitPrice));
   }
 
+  public void recordCreator(String name) {
+    this.createdBy = name;
+  }
+
   @Override
   public boolean isNew() { return fresh; }
 
@@ -70,5 +77,6 @@ public class WorkOrder implements Persistable<String> {
   public String getDescription() { return description; }
   public long getTotal() { return total; }
   public Instant getCreatedAt() { return createdAt; }
+  public String getCreatedBy() { return createdBy; }
   public List<WorkOrderItem> getItems() { return List.copyOf(items); }
 }

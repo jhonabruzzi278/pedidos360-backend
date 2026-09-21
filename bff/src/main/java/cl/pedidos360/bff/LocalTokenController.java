@@ -23,9 +23,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/dev")
 class LocalTokenController {
   private static final Duration TOKEN_TTL = Duration.ofMinutes(30);
-  private static final Map<String, String> SCOPES_BY_ROLE = Map.of(
-      "viewer", "orders.read events.read",
-      "admin", "orders.read orders.write events.read");
+  // Como en Entra ID (consentimiento de administrador), todos traen los tres scopes: lo que distingue al admin es
+  // el rol, y lo que permite cotizar a un usuario es que el admin apruebe su solicitud de acceso.
+  private static final String ALL_SCOPES = "orders.read orders.write events.read";
+  private static final Map<String, String> SCOPES_BY_ROLE = Map.of("viewer", ALL_SCOPES, "admin", ALL_SCOPES);
+  private static final Map<String, String> NAMES_BY_ROLE = Map.of(
+      "viewer", "Usuario local", "admin", "Administrador local");
 
   private final JwtEncoder encoder;
   private final String issuer;
@@ -45,9 +48,11 @@ class LocalTokenController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rol no soportado");
     }
     Instant now = Instant.now();
-    JwtClaimsSet claims = JwtClaimsSet.builder().issuer(issuer).subject("local-demo-user")
+    // Una identidad distinta por rol: el permiso de generar cotizaciones se guarda por usuario.
+    JwtClaimsSet claims = JwtClaimsSet.builder().issuer(issuer).subject("local-" + role)
         .audience(List.of(audience)).issuedAt(now).expiresAt(now.plus(TOKEN_TTL))
-        .claim("roles", List.of(role)).claim("scope", scopes).build();
+        .claim("roles", List.of(role)).claim("scope", scopes)
+        .claim("name", NAMES_BY_ROLE.get(role)).claim("preferred_username", role + "@local.test").build();
     JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
     String value = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     return Map.of("accessToken", value, "tokenType", "Bearer", "expiresIn", TOKEN_TTL.toSeconds());

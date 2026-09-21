@@ -155,9 +155,11 @@ class BffSecurityTest {
   }
 
   @Test
-  void postWorkOrders_withViewerRole_returns403() throws Exception {
+  void postWorkOrders_withViewerRoleAndNoApprovedAccess_returns403AccessRequired() throws Exception {
     String token = TestToken.viewer().withScopes("orders.read orders.write").bearer();
-    postOrder(token).andExpect(status().isForbidden());
+    postOrder(token).andExpect(status().isForbidden())
+        .andExpect(content().string(containsString("\"error\":\"access_required\"")));
+    assertThat(DOWNSTREAM.createCalls()).isZero();
   }
 
   @Test
@@ -187,6 +189,8 @@ class BffSecurityTest {
         .andExpect(content().string(containsString("OT-NEW")));
     assertThat(DOWNSTREAM.lastCreateBody()).isEqualTo(NEW_ORDER);
     assertThat(DOWNSTREAM.lastCreateContentType()).startsWith(MediaType.APPLICATION_JSON_VALUE);
+    // El admin no necesita aprobacion: no se consulta el servicio de accesos.
+    assertThat(DOWNSTREAM.lookupCalls()).isZero();
   }
 
   // --- Errores del microservicio: no se convierten en 500 ---
@@ -301,10 +305,15 @@ class BffSecurityTest {
   // --- Endpoint de desarrollo (solo perfil local) ---
 
   @Test
-  void devToken_defaultsToViewerWithoutWritePermissions() throws Exception {
+  void devToken_defaultsToAViewerWhoStillNeedsTheAdminToApproveHisAccess() throws Exception {
     String token = issueDevToken("");
     mvc.perform(get(ORDERS).header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andExpect(status().isOk());
-    postOrder("Bearer " + token).andExpect(status().isForbidden());
+    // Trae el scope de escritura (como en Entra ID), asi que el rechazo es por falta de aprobacion, no de scope.
+    postOrder("Bearer " + token).andExpect(status().isForbidden())
+        .andExpect(content().string(containsString("access_required")));
+    // Su identidad local es distinta de la del admin: aprobar a uno no abre la puerta al otro.
+    DOWNSTREAM.setAccessStatus("local-viewer", "APPROVED");
+    postOrder("Bearer " + token).andExpect(status().isCreated());
   }
 
   @Test

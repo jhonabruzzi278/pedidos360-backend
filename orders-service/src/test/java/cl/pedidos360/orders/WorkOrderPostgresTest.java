@@ -1,12 +1,14 @@
 package cl.pedidos360.orders;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Year;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -35,6 +37,7 @@ class WorkOrderPostgresTest {
   }
 
   @Autowired WorkOrderRepository repository;
+  @Autowired AccessRequestRepository accessRequests;
   @Autowired JdbcTemplate jdbc;
 
   @Test
@@ -71,6 +74,37 @@ class WorkOrderPostgresTest {
     List<String> tables = jdbc.queryForList(
         "select lower(table_name) from information_schema.tables where table_schema = 'public'", String.class);
 
-    assertThat(tables).contains("ot", "ot_item");
+    assertThat(tables).contains("ot", "ot_item", "access_request");
+  }
+
+  @Test
+  void storesWhoIssuedTheQuote() {
+    WorkOrder order = new WorkOrder("OT-PG-TEST-2", "CLI-9002", "PGTE58", "Cotización con autor", 1_000);
+    order.addItem("Revisión", 1, 1_000);
+    order.recordCreator("Camila Rojas");
+    repository.saveAndFlush(order);
+
+    assertThat(repository.findById("OT-PG-TEST-2").orElseThrow().getCreatedBy()).isEqualTo("Camila Rojas");
+    assertThat(jdbc.queryForObject(
+        "select count(*) from information_schema.columns where table_name = 'ot' and column_name = 'created_by'",
+        Integer.class)).isEqualTo(1);
+  }
+
+  @Test
+  void seedsTheAccessRequestsForTheAdministratorToReview() {
+    assertThat(accessRequests.findByUserId("demo-camila-rojas")).get()
+        .extracting(AccessRequest::getStatus).isEqualTo(AccessStatus.PENDING);
+    assertThat(accessRequests.findByUserId("demo-valentina-soto")).get()
+        .extracting(AccessRequest::getStatus).isEqualTo(AccessStatus.APPROVED);
+  }
+
+  @Test
+  void allowsOneAccessRequestPerUserOnly() {
+    accessRequests.saveAndFlush(new AccessRequest("pg-user-1", "Ana Pérez", "ana@ejemplo.cl"));
+
+    assertThatThrownBy(() -> accessRequests.saveAndFlush(new AccessRequest("pg-user-1", "Ana otra vez", null)))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    assertThat(accessRequests.findByUserId("pg-user-1")).get()
+        .extracting(AccessRequest::getUserName).isEqualTo("Ana Pérez");
   }
 }
