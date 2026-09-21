@@ -57,7 +57,7 @@ Con la plataforma SPA, Entra ID solo permite el flujo *Authorization Code con PK
 
 **2.2 Autenticacion.** *Autenticacion*
 - **No** marque ninguna casilla de *Concesion implicita e flujos hibridos* (ni tokens de acceso ni tokens de id). Es lo que la rubrica evalua como "PKCE correcto, sin Implicit".
-- Mas adelante, con la infraestructura creada, agregue tambien como URI de redireccion SPA el dominio de CloudFront (salida `entra_redirect_uri` del workflow `infra-deploy`, del tipo `https://dxxxxxxxx.cloudfront.net`). **Sin barra final.** Esa misma URI se usa al cerrar sesion.
+- Mas adelante, con la infraestructura creada, agregue tambien como URI de redireccion SPA la URL de `jdv-web` (salida `entra_redirect_uri` del workflow `infra-deploy`, del tipo `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com`). **Sin barra final.** Esa misma URI se usa al cerrar sesion.
 
 **2.3 Permisos de la API.** *Permisos de API > Agregar un permiso > Mis API > `jdv-pedidos360-api` > Permisos delegados*
 - Marque `orders.read`, `orders.write` y `events.read` > *Agregar permisos*.
@@ -122,7 +122,7 @@ gh variable set ENTRA_CLIENT_ID     --repo jhonabruzzi278/pedidos360-frontend --
 ```
 
 **Orden recomendado** (asi la instancia no se recrea):
-1. Secciones 1 a 3 de esta guia (la URI de CloudFront todavia no existe: use solo `http://localhost:4200`).
+1. Secciones 1 a 3 de esta guia (la URI de `jdv-web` todavia no existe: use solo `http://localhost:4200`).
 2. Cargue las cinco variables anteriores.
 3. Ejecute `infra-deploy` (repo backend). Copie `entra_redirect_uri` del resumen.
 4. Agregue esa URI a `jdv-pedidos360-spa` (paso 2.2).
@@ -161,11 +161,11 @@ Nota sobre el 403: todos los usuarios reciben los tres ambitos (consentimiento d
 
 | Sintoma | Causa probable | Solucion |
 |---|---|---|
-| `AADSTS50011` (URI de respuesta no coincide) | La URI de CloudFront no esta registrada, o tiene barra final, o esta en la plataforma equivocada | Registrela en *Autenticacion* como plataforma SPA, sin barra final |
+| `AADSTS50011` (URI de respuesta no coincide) | La URI de `jdv-web` no esta registrada, o tiene barra final, o esta en la plataforma equivocada | Registrela en *Autenticacion* como plataforma SPA, sin barra final |
 | `AADSTS65001` (falta consentimiento) | No se concedio el consentimiento de administrador | Paso 2.3 |
 | `AADSTS90009`/`AADSTS500011` al pedir el token | El ambito no existe o el URI de id. de aplicacion no es `api://<API_CLIENT_ID>` | Revise el paso 1.2 y las tres variables `ENTRA_*` |
 | API Gateway responde 401 con sesion iniciada | Token v1 (paso 1.3), `JWT_AUDIENCE` o `JWT_ISSUER` incorrectos, o `infra-deploy` sin ejecutar tras definir las variables | Decodifique el token en la pagina *Perfil y token* y compare `ver`, `iss` y `aud` con la tabla de la seccion 6 |
 | El POST responde 403 con `admin.jdv` | El token es anterior a la asignacion del rol | Cierre sesion y vuelva a entrar; confirme `roles` en *Perfil y token* |
-| Error de CORS en el navegador | El origen del frontend no es el de CloudFront que conoce el gateway | Use la URL de CloudFront exacta; si se recreo CloudFront, ejecute `infra-deploy` otra vez |
+| Error de CORS en el navegador | El origen del frontend no es el de `jdv-web` que conoce el gateway | Use la URL de `jdv-web` exacta; si se recreo `jdv-web`, ejecute `infra-deploy` otra vez y actualice la redireccion |
 | `interaction_in_progress` | Un inicio de sesion anterior quedo a medias | Cierre la pestana, borre el almacenamiento de sesion del sitio y reintente |
 | `AADSTS50105` (usuario no asignado) | *Asignacion requerida* esta en **Si** | Pongala en **No** o asigne al usuario |

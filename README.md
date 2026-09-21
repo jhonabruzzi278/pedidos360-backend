@@ -101,4 +101,4 @@ Implementado y verificado localmente: microservicios, BFF con validacion de JWT,
 
 ## Infraestructura cloud
 
-La infraestructura (VPC, EC2, API Gateway con JWT authorizer, S3 y CloudFront) esta definida como codigo en `infra/` con Terraform y se crea o destruye con GitHub Actions (`infra-deploy`, `infra-destroy`, `backend`). Recursos y tags llevan el prefijo `jdv`. Guia de puesta en marcha, rutas del gateway y limites del Learner Lab en [`infra/README.md`](infra/README.md).
+La infraestructura (VPC, EC2 con nginx, dos API Gateway con JWT authorizer y S3) esta definida como codigo en `infra/` con Terraform y se crea o destruye con GitHub Actions (`infra-deploy`, `infra-destroy`, `backend`). Recursos y tags llevan el prefijo `jdv`. Guia de puesta en marcha, rutas del gateway y limites del Learner Lab en [`infra/README.md`](infra/README.md).
