@@ -98,3 +98,7 @@ Pendiente: perfil de conexion a la base de datos cloud (driver, URL y credencial
 ## Alcance y pendientes
 
 Implementado y verificado localmente: microservicios, BFF con validacion de JWT, autorizacion por rol y scope, CORS, y 96 pruebas automatizadas (incluidas pruebas sobre servidor real y una verificacion RS256 contra un IdP falso local). Pendiente, por requerir cuentas de nube: tenant y aplicacion en Entra ID, flujo de registro, API Gateway, despliegue en EC2 y base de datos cloud.
+
+## Infraestructura cloud
+
+La infraestructura (VPC, EC2, API Gateway con JWT authorizer, S3 y CloudFront) esta definida como codigo en `infra/` con Terraform y se crea o destruye con GitHub Actions (`infra-deploy`, `infra-destroy`, `backend`). Recursos y tags llevan el prefijo `jdv`. Guia de puesta en marcha, rutas del gateway y limites del Learner Lab en [`infra/README.md`](infra/README.md).
