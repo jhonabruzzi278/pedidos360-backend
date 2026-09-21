@@ -37,3 +37,15 @@ Thumbs.db
 # Documentos de guia (rubricas, notas de alcance): no se suben al repositorio
 *.pdf
 docs/
+
+# Terraform: estado, planes y variables locales (el lock de proveedores .terraform.lock.hcl SI se versiona)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+*.tfvars
+!*.tfvars.example
+infra/terraform/outputs.json
+infra/terraform/params.json

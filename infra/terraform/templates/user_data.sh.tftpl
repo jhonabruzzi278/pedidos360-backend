@@ -1,0 +1,109 @@
+#!/bin/bash
+# user_data de la instancia del backend Pedidos360: instala Java 17, crea un servicio systemd por
+# microservicio y un script de despliegue que descarga los JAR desde S3. Se ejecuta al crear la instancia.
+set -euxo pipefail
+exec > >(tee /var/log/pedidos360-user-data.log) 2>&1
+
+dnf install -y java-17-amazon-corretto-headless
+
+id pedidos360 >/dev/null 2>&1 || useradd --system --home-dir /opt/pedidos360 --shell /sbin/nologin pedidos360
+install -d -o pedidos360 -g pedidos360 /opt/pedidos360
+install -d /etc/pedidos360
+
+# --- Configuracion (nada secreto: issuer y audience son publicos) ---
+cat > /etc/pedidos360/bff.env <<'EOF'
+FRONTEND_ORIGIN=${frontend_origin}
+ORDERS_SERVICE_URL=http://127.0.0.1:8081
+AUDIT_SERVICE_URL=http://127.0.0.1:8082
+JWT_ISSUER=${jwt_issuer}
+JWT_AUDIENCE=${jwt_audience}
+EOF
+
+# Los microservicios internos no autentican: solo escuchan en loopback y el BFF es su unico cliente.
+printf 'SERVER_ADDRESS=127.0.0.1\n' > /etc/pedidos360/orders-service.env
+printf 'SERVER_ADDRESS=127.0.0.1\n' > /etc/pedidos360/audit-service.env
+
+%{ if jwt_configured ~}
+touch /etc/pedidos360/bff.configured
+%{ else ~}
+echo "JWT sin configurar: el BFF no se inicia hasta definir jwt_issuer y jwt_audience y recrear la instancia"
+%{ endif ~}
+
+# --- Un servicio systemd por modulo ---
+for svc in orders-service audit-service bff; do
+  extra=""
+  if [ "$svc" = bff ]; then extra="ConditionPathExists=/etc/pedidos360/bff.configured"; fi
+  cat > /etc/systemd/system/pedidos360-$svc.service <<UNIT
+[Unit]
+Description=Pedidos360 $svc
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/pedidos360/$svc.jar
+$extra
+
+[Service]
+User=pedidos360
+EnvironmentFile=/etc/pedidos360/$svc.env
+Environment="JAVA_TOOL_OPTIONS=-Xms64m -Xmx256m"
+ExecStart=/usr/bin/java -jar /opt/pedidos360/$svc.jar
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+done
+
+# --- Script de despliegue: lo usan el arranque de la instancia y el workflow backend-deploy (via SSM) ---
+cat > /opt/pedidos360/deploy.sh <<'DEPLOY'
+#!/bin/bash
+# Uso: deploy.sh [release]   (por defecto "latest"). Descarga los JAR de S3, reinicia y verifica los servicios.
+set -euo pipefail
+BUCKET="${artifacts_bucket}"
+REGION="${region}"
+RELEASE="$${1:-latest}"
+SRC="s3://$BUCKET/releases/$RELEASE"
+
+if ! aws s3 ls "$SRC/" --region "$REGION" | grep -q '\.jar'; then
+  echo "Sin artefactos en $SRC: nada que desplegar"
+  exit 0
+fi
+
+for svc in orders-service audit-service bff; do
+  aws s3 cp "$SRC/$svc.jar" "/opt/pedidos360/$svc.jar.new" --region "$REGION" --only-show-errors
+  chown pedidos360:pedidos360 "/opt/pedidos360/$svc.jar.new"
+  mv -f "/opt/pedidos360/$svc.jar.new" "/opt/pedidos360/$svc.jar"
+done
+
+systemctl daemon-reload
+for svc in orders-service audit-service bff; do
+  systemctl enable "pedidos360-$svc" >/dev/null 2>&1
+  systemctl restart "pedidos360-$svc" || true
+done
+
+if [ ! -f /etc/pedidos360/bff.configured ]; then
+  echo "JAR desplegados, pero el BFF no se inicia: falta configurar JWT_ISSUER y JWT_AUDIENCE"
+  exit 0
+fi
+
+for port in 8081 8082 8080; do
+  ok=0
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:$port/actuator/health" | grep -q '"UP"'; then ok=1; break; fi
+    sleep 2
+  done
+  if [ "$ok" -ne 1 ]; then
+    echo "El servicio del puerto $port no respondio UP" >&2
+    journalctl -u "pedidos360-bff" -n 40 --no-pager >&2 || true
+    exit 1
+  fi
+  echo "Puerto $port: UP"
+done
+echo "Despliegue $RELEASE completado"
+DEPLOY
+chmod 750 /opt/pedidos360/deploy.sh
+
+/opt/pedidos360/deploy.sh latest || echo "Despliegue inicial omitido; ejecute el workflow backend-deploy"

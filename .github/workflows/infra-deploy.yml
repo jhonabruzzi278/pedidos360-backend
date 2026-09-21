@@ -1,0 +1,99 @@
+name: infra-deploy
+
+# Crea o actualiza toda la infraestructura (VPC, EC2, API Gateway, S3, CloudFront) con Terraform.
+# El estado queda en S3 (jdv-tfstate-<cuenta>). Solo manual: las credenciales del Learner Lab caducan.
+on:
+  workflow_dispatch:
+    inputs:
+      plan_only:
+        description: 'Solo planificar (no aplicar)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: jdv-infra
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  # Vacios hasta que exista el tenant: Terraform usa marcadores y el BFF no arranca.
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_jwt_issuer: ${{ vars.JWT_ISSUER }}
+  TF_VAR_jwt_audience: ${{ vars.JWT_AUDIENCE }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verificar credenciales
+        run: |
+          if ! aws sts get-caller-identity --query Arn --output text; then
+            echo "::error::Credenciales invalidas o vencidas. Inicie el Learner Lab y ejecute infra/scripts/sync-aws-secrets.ps1"
+            exit 1
+          fi
+
+      - name: Bucket del estado remoto
+        working-directory: .
+        run: bash infra/scripts/bootstrap-state.sh
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~> 1.13'
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=pedidos360/infra.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Terraform fmt y validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply
+        if: ${{ !inputs.plan_only }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Resumen
+        if: ${{ !inputs.plan_only }}
+        run: |
+          terraform output -json > outputs.json
+          {
+            echo '## Infraestructura jdv'
+            echo
+            echo '| Salida | Valor |'
+            echo '|---|---|'
+            jq -r 'to_entries[] | "| `\(.key)` | `\(.value.value)` |"' outputs.json
+            echo
+            echo "**Entra ID:** registre \`$(jq -r .entra_redirect_uri.value outputs.json)\` como URI de redireccion (plataforma SPA)."
+            if [ "$(jq -r .jwt_configured.value outputs.json)" != "true" ]; then
+              echo
+              echo '> **JWT sin configurar:** defina las variables JWT_ISSUER y JWT_AUDIENCE del repositorio y vuelva a ejecutar este workflow. Hasta entonces el BFF no arranca.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

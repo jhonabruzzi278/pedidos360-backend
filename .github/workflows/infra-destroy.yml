@@ -1,0 +1,107 @@
+name: infra-destroy
+
+# Destruye toda la infraestructura creada por infra-deploy. Conserva el bucket del estado salvo que se pida.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Escriba "destroy" para confirmar'
+        type: string
+        required: true
+      delete_state_bucket:
+        description: 'Borrar tambien el bucket del estado de Terraform (jdv-tfstate-...)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: jdv-infra
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_jwt_issuer: ${{ vars.JWT_ISSUER }}
+  TF_VAR_jwt_audience: ${{ vars.JWT_AUDIENCE }}
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - name: Confirmacion
+        working-directory: .
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "destroy" ]; then
+            echo "::error::Confirmacion incorrecta: escriba exactamente 'destroy'."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Localizar el bucket del estado
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          BUCKET="jdv-tfstate-$ACCOUNT_ID"
+          if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "::error::No existe $BUCKET: no hay estado de Terraform que destruir."
+            exit 1
+          fi
+          echo "STATE_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~> 1.13'
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=pedidos360/infra.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      # CloudFront debe deshabilitarse y propagarse antes de borrarse: puede tardar varios minutos.
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -parallelism=20
+
+      - name: Borrar bucket del estado
+        if: ${{ inputs.delete_state_bucket }}
+        working-directory: .
+        run: |
+          B="$STATE_BUCKET"
+          # El bucket tiene versionado: hay que borrar versiones y marcadores antes de eliminarlo.
+          OBJECTS="$(aws s3api list-object-versions --bucket "$B" --output json \
+            | jq -c '[(.Versions // [])[], (.DeleteMarkers // [])[]] | map({Key, VersionId})')"
+          if [ "$OBJECTS" != "[]" ]; then
+            aws s3api delete-objects --bucket "$B" --delete "{\"Objects\": $OBJECTS, \"Quiet\": true}" >/dev/null
+          fi
+          aws s3api delete-bucket --bucket "$B"
+          echo "Bucket $B eliminado"
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo '## Destruccion jdv'
+            echo "Resultado: ${{ job.status }}"
+            echo "Bucket de estado eliminado: ${{ inputs.delete_state_bucket }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,131 @@
+name: backend
+
+# CI en cada push/PR (compila y ejecuta las pruebas). El despliegue a EC2 es manual, o automatico en
+# push a main si la variable de repositorio AUTO_DEPLOY vale 'true'.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'infra/**'
+      - '.github/workflows/infra-*.yml'
+      - '**/*.md'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Compilar y probar
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp verify
+
+      - name: Reunir JAR ejecutables
+        run: |
+          mkdir dist
+          for svc in orders-service audit-service bff; do
+            cp "$svc"/target/"$svc"-*-SNAPSHOT.jar "dist/$svc.jar"
+          done
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-jars
+          path: dist/*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.AUTO_DEPLOY == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: jdv-backend-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-jars
+          path: dist
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Localizar bucket e instancia
+        run: |
+          if ! ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"; then
+            echo "::error::Credenciales invalidas o vencidas. Inicie el Learner Lab y ejecute infra/scripts/sync-aws-secrets.ps1"
+            exit 1
+          fi
+          INSTANCE_ID="$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=jdv-backend" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "::error::No hay instancia jdv-backend en ejecucion. Ejecute primero el workflow infra-deploy."
+            exit 1
+          fi
+          echo "BUCKET=jdv-artifacts-$ACCOUNT_ID" >> "$GITHUB_ENV"
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+
+      - name: Publicar JAR en S3
+        run: |
+          aws s3 cp dist/ "s3://$BUCKET/releases/$GITHUB_SHA/" --recursive --only-show-errors
+          aws s3 cp dist/ "s3://$BUCKET/releases/latest/" --recursive --only-show-errors
+
+      - name: Esperar a que la instancia se registre en SSM
+        run: |
+          for _ in $(seq 1 60); do
+            PING="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+              --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
+            [ "$PING" = "Online" ] && exit 0
+            sleep 10
+          done
+          echo "::error::La instancia $INSTANCE_ID no aparece Online en SSM (revise que LabInstanceProfile permita SSM)."
+          exit 1
+
+      - name: Desplegar en EC2 (SSM Run Command)
+        run: |
+          jq -n --arg sha "$GITHUB_SHA" \
+            '{commands: ["cloud-init status --wait || true", "/opt/pedidos360/deploy.sh \($sha)"]}' > params.json
+          CMD_ID="$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "backend-deploy $GITHUB_SHA" \
+            --parameters file://params.json \
+            --timeout-seconds 900 \
+            --query Command.CommandId --output text)"
+          STATUS=Pending
+          for _ in $(seq 1 180); do
+            STATUS="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
+            sleep 5
+          done
+          echo "Estado: $STATUS"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text || true
+          [ "$STATUS" = "Success" ]
