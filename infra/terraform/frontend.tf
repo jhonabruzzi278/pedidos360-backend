@@ -23,12 +23,11 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
-data "aws_cloudfront_cache_policy" "optimized" {
-  name = "Managed-CachingOptimized"
-}
-
-data "aws_cloudfront_response_headers_policy" "security" {
-  name = "Managed-SecurityHeadersPolicy"
+# Politicas administradas de AWS, por id. El Learner Lab no permite cloudfront:List*Policies, asi
+# que no se pueden buscar por nombre con un data source.
+locals {
+  cloudfront_cache_policy_caching_optimized   = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+  cloudfront_response_policy_security_headers = "67f7725c-6f97-4210-82d7-5512b31e9d03" # Managed-SecurityHeadersPolicy
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
@@ -52,8 +51,8 @@ resource "aws_cloudfront_distribution" "frontend" {
     allowed_methods            = ["GET", "HEAD"]
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
-    cache_policy_id            = data.aws_cloudfront_cache_policy.optimized.id
-    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security.id
+    cache_policy_id            = local.cloudfront_cache_policy_caching_optimized
+    response_headers_policy_id = local.cloudfront_response_policy_security_headers
   }
 
   # SPA: una ruta de Angular inexistente en S3 responde 403/404; se sirve index.html y el router decide.
