@@ -82,6 +82,15 @@ Deje *Asignacion requerida* en **No** (valor por defecto) en ambas aplicaciones:
 - Con contrasena inicial, Entra ID obliga a cambiarla en el primer acceso: no quiere que eso ocurra frente al docente.
 - Un tenant nuevo suele traer *valores predeterminados de seguridad* activados: piden registrar el metodo MFA (Microsoft Authenticator) en el primer acceso y pueden pedirlo de nuevo en inicios de sesion posteriores. O bien registra MFA en ambos usuarios de antemano, o bien desactiva los valores predeterminados en *Entra ID > Propiedades > Administrar valores predeterminados de seguridad* y lo explica como decision del laboratorio. Cualquiera de las dos cuenta como "politica" que puede mostrar.
 
+**Politicas del tenant que puede mostrar** (indicador *Tenant*, 10%: "usuarios de prueba, roles y politicas"). Ninguna requiere licencia de pago ni cambios de codigo; muestre las que tenga activas y explique para que sirve cada una:
+
+| Politica | Donde se ve | Que decir |
+|---|---|---|
+| Valores predeterminados de seguridad | *Entra ID > Propiedades > Administrar valores predeterminados de seguridad* | Exige MFA a los usuarios y bloquea la autenticacion heredada |
+| Consentimiento de administrador | *Registros de aplicaciones > `jdv-pedidos360-spa` > Permisos de API* (filas "Concedido") | Ningun usuario final autoriza permisos: los ambitos los concede el administrador |
+| Asignacion de roles | *Aplicaciones empresariales > `jdv-pedidos360-api` > Usuarios y grupos* | Solo `admin.jdv` recibe el rol `admin`; `viewer.jdv` queda sin rol |
+| Registro de autoservicio (si activa la opcion A de la seccion 4) | *Identidades externas > Configuracion de colaboracion externa* y *Flujos de usuario* | Quien puede crear su propia cuenta, con que identidades y que datos se piden |
+
 ## 4. Flujo de registro (los usuarios crean su cuenta desde el frontend)
 
 La rubrica (10%) pide que los usuarios puedan crear su cuenta desde el frontend y luego iniciar sesion. Hay dos caminos; **confirme con el docente cual espera**.
@@ -90,9 +99,10 @@ La rubrica (10%) pide que los usuarios puedan crear su cuenta desde el frontend 
 1. *Entra ID > Identidades externas > Configuracion de colaboracion externa*: habilite *Permitir el registro de autoservicio de invitados mediante flujos de usuario*.
 2. *Identidades externas > Flujos de usuario > Nuevo flujo de usuario*: elija los proveedores de identidad (correo con codigo de un solo uso) y los atributos a pedir (nombre).
 3. Dentro del flujo, *Aplicaciones > Agregar* `jdv-pedidos360-spa`.
-4. Pruebe primero con el boton **Iniciar sesion** normal del frontend en una ventana privada y un correo nuevo. Si Entra ofrece el registro, no necesita nada mas. Solo si no lo ofrece, defina la variable `ENTRA_SIGNUP_ENABLED=true` del repo frontend para mostrar el boton **Crear cuenta** (`prompt=create`).
+4. Defina la variable `ENTRA_SIGNUP_ENABLED=true` en el repo frontend y ejecute otra vez el workflow *frontend*: la pantalla de inicio muestra el boton **Crear cuenta**. En un tenant workforce ese boton hace un inicio de sesion normal (`prompt=create` **no** es un valor valido aqui: la documentacion de Microsoft solo admite `login`, `none`, `consent` y `select_account`), y es la pantalla de Microsoft la que ofrece crear la cuenta al usuario que no existe. El boton es solo un acceso directo con ese texto: el registro depende del flujo de usuario del paso 2.
+5. **Pruebelo antes de la presentacion**, en una ventana privada y con un correo que no exista en el tenant: pulse **Crear cuenta**, complete el registro (codigo de un solo uso al correo) y compruebe que vuelve al frontend con la sesion iniciada. Si la pantalla de Microsoft no ofrece ninguna forma de registrarse, esta opcion no le sirve con este tenant: pase a la opcion B.
 
-   Limitaciones: los usuarios son invitados y nacen sin rol; para asignarles `admin` hay que hacerlo desde *Aplicaciones empresariales*. El comportamiento exacto del registro depende del tenant: verifiquelo antes de la presentacion.
+   Limitaciones: los usuarios son invitados y nacen sin rol; para asignarles `admin` hay que hacerlo desde *Aplicaciones empresariales*. No pueden hacer el `POST` (403 por rol), lo que sirve de demostracion adicional. El comportamiento exacto del registro depende del tenant y no se puede comprobar sin configurarlo: verifiquelo antes de la presentacion.
 
 **Opcion B: tenant External ID (externo).** Es la solucion pensada para clientes: registro, inicio de sesion y restablecimiento de contrasena propios de la aplicacion. El nivel base es gratuito hasta 50.000 usuarios activos mensuales. Es un tenant **distinto**: hay que repetir las secciones 1 a 3 en el y, ademas, crear el flujo *Registro e inicio de sesion* y asociarle la aplicacion SPA. Cambia lo siguiente:
 - `JWT_ISSUER` = `https://<TENANT_ID>.ciamlogin.com/<TENANT_ID>/v2.0`
@@ -152,8 +162,8 @@ Capturas y demostraciones sugeridas, por indicador de la rubrica:
 | Aplicacion (10%) | Las dos aplicaciones: ambitos expuestos, rol `admin`, URIs de redireccion, permisos con consentimiento concedido |
 | Registro e inicio de sesion (10%) | Alta de un usuario nuevo desde el frontend y su primer inicio de sesion (seccion 4) |
 | PKCE (15%) | DevTools > Red, filtrar por `authorize`: `response_type=code`, `code_challenge`, `code_challenge_method=S256`, `state`, `nonce`. Luego la peticion `token`: lleva `code_verifier`. Sin `id_token`/`token` en la URL de retorno |
-| JWT en todas las rutas (20%) | Panel de ordenes: `200` con token, `401` con *Llamar sin token*, `403` en el POST con `viewer.jdv`. En la consola de API Gateway: autorizador `jdv-entra-jwt` con emisor y audiencia, asociado a las tres rutas |
-| Evidencia por ruta (15%) | Las tres rutas del panel con su codigo, y el JSON de `/api/work-orders` y `/api/events` |
+| JWT en todas las rutas (20%) | Panel de ordenes: `200` con token en las dos lecturas y `201` en el POST con `admin.jdv`; `401` en las tres rutas con **Llamar sin token** y con **Llamar con token alterado** (mismo token con la firma cambiada: prueba que se verifica la firma); `403` en el POST con `viewer.jdv`. En la consola de API Gateway: autorizador `jdv-entra-jwt` con emisor y audiencia, asociado a las tres rutas |
+| Evidencia por ruta (15%) | La tabla *Resultado de cada ruta* muestra, para cada ruta con y sin token, el codigo y el JSON exacto de la respuesta (**Ver JSON**): la lista de ordenes y de eventos que devuelven los microservicios, y `{"message":"Unauthorized"}` del gateway. Complemente con el grupo de logs `/aws/apigateway/jdv-api` en CloudWatch |
 
 Nota sobre el 403: todos los usuarios reciben los tres ambitos (consentimiento de administrador), asi que el `403` de `viewer.jdv` en el POST lo produce el BFF por **rol** (`admin`), no el gateway por ambito. El gateway responde `403` cuando el token no trae el ambito de la ruta.
 

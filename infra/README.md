@@ -73,7 +73,7 @@ Sin token o con token invalido el gateway responde `401`; con token valido pero 
 
 5. **Backend.** *Actions > backend > Run workflow*.
 
-6. **Frontend.** En el repo frontend defina las variables `ENTRA_CLIENT_ID` (aplicacion SPA), `ENTRA_API_CLIENT_ID` (aplicacion de la API) y `ENTRA_TENANT_ID` (o `ENTRA_AUTHORITY` para External ID) y ejecute *Actions > frontend > Run workflow*. Las URL de `jdv-api` y `jdv-web` y la instancia las descubre solo. Con `ENTRA_SIGNUP_ENABLED=true` la pantalla de inicio muestra "Crear cuenta" (`prompt=create`); ver la seccion 4 de [`ENTRA.md`](ENTRA.md) para saber cuando conviene.
+6. **Frontend.** En el repo frontend defina las variables `ENTRA_CLIENT_ID` (aplicacion SPA), `ENTRA_API_CLIENT_ID` (aplicacion de la API) y `ENTRA_TENANT_ID` (o `ENTRA_AUTHORITY` para External ID) y ejecute *Actions > frontend > Run workflow*. Las URL de `jdv-api` y `jdv-web` y la instancia las descubre solo. Con `ENTRA_SIGNUP_ENABLED=true` la pantalla de inicio muestra "Crear cuenta" (en External ID abre el alta con `prompt=create`; en el tenant workforce hace un inicio de sesion normal); ver la seccion 4 de [`ENTRA.md`](ENTRA.md) para saber cuando conviene.
 
 Variables opcionales en ambos repos: `AWS_REGION` (por defecto `us-east-1`) y `AUTO_DEPLOY=true` para desplegar en cada push a `main`.
 
