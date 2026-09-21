@@ -67,9 +67,16 @@ REGION="${region}"
 RELEASE="$${1:-latest}"
 SRC="s3://$BUCKET/releases/$RELEASE"
 
-if ! aws s3 ls "$SRC/" --region "$REGION" | grep -q '\.jar'; then
-  echo "Sin artefactos en $SRC: nada que desplegar"
-  exit 0
+# Se captura el listado antes de filtrarlo: "aws s3 ls | grep -q" con pipefail falla por SIGPIPE cuando
+# grep cierra la tuberia, y el script creia que no habia artefactos aunque estuvieran.
+LISTING="$(aws s3 ls "$SRC/" --region "$REGION" || true)"
+if ! grep -q '\.jar' <<<"$LISTING"; then
+  if [ "$RELEASE" = "latest" ]; then
+    echo "Sin artefactos en $SRC: nada que desplegar"
+    exit 0
+  fi
+  echo "No hay artefactos en $SRC" >&2
+  exit 1
 fi
 
 for svc in orders-service audit-service bff; do
@@ -173,8 +180,12 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 if ! aws s3 ls "$SRC" --region "$REGION" >/dev/null 2>&1; then
-  echo "Sin sitio en $SRC: nada que desplegar"
-  exit 0
+  if [ "$RELEASE" = "latest" ]; then
+    echo "Sin sitio en $SRC: nada que desplegar"
+    exit 0
+  fi
+  echo "No hay sitio en $SRC" >&2
+  exit 1
 fi
 
 aws s3 cp "$SRC" "$WORK/site.tar.gz" --region "$REGION" --only-show-errors

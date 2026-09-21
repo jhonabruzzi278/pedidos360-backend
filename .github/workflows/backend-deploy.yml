@@ -129,3 +129,20 @@ jobs:
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
             --query '[StandardOutputContent, StandardErrorContent]' --output text || true
           [ "$STATUS" = "Success" ]
+
+      # Un estado Success de SSM solo dice que el script termino sin error: aqui se comprueba de verdad
+      # que el BFF responde desde fuera de la instancia.
+      - name: Verificar el BFF desde fuera
+        run: |
+          IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"
+          for _ in $(seq 1 12); do
+            BODY="$(curl -fsS -m 5 "http://$IP:8080/actuator/health" || true)"
+            if grep -q '"UP"' <<<"$BODY"; then
+              echo "BFF UP en $IP:8080"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::El BFF no responde UP en $IP:8080 tras el despliegue."
+          exit 1
